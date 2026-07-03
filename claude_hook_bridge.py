@@ -309,18 +309,41 @@ def queue_announcement(host: str, payload: dict) -> dict | None:
 
 
 def _try_post_with_local_fallback(payload: dict) -> dict | None:
-    """先打主 host（WSL 下指 Windows），失败时若主 host 非 loopback 再回退本机 daemon。"""
+    """按平台路由：
+
+    - Windows / macOS / 原生 Linux：走本机 daemon（127.0.0.1），如未运行就拉起。
+    - WSL2：走 Windows 主机 IP（resolv.conf nameserver）；连不上直接放弃，
+      不再回退到本机 daemon。原因：WSL 端的 daemon 没有音频设备，spawn 出来
+      只会 silently 吃 POST（mirrored 网络模式下 wslrelay 还会抢先绑
+      127.0.0.1:48271，把后续 Windows 端的请求也劫走），让 Windows 端
+      "Stop hook 没播报" 的诊断变得非常困难。Windows daemon 才是发声源头，
+      它挂了应该被注意到、被手动重启，而不是被静默兜底。
+    """
     primary = _resolve_daemon_host()
-    resp = queue_announcement(primary, payload)
-    if resp is not None:
-        return resp
-    if primary != "127.0.0.1":
-        log(f"primary host {primary} failed, fallback to local 127.0.0.1")
-        return queue_announcement("127.0.0.1", payload)
-    return None
+    if IS_WSL:
+        if not is_daemon_alive(primary):
+            log(
+                f"WSL bridge: Windows daemon at {primary}:{PORT} unreachable, "
+                f"not spawning local daemon (would shadow Windows daemon). "
+                f"Start tts_daemon.py on Windows side."
+            )
+            return None
+        return queue_announcement(primary, payload)
+    return queue_announcement(primary, payload)
 
 
 def main() -> None:
+    # 读 stdin 为 bytes 再按 UTF-8 解。Windows 中文系统 locale 下 sys.stdin 默认
+    # GBK，Claude Code 的 hook payload 是 UTF-8（含 cwd / last_assistant_message
+    # 里的中文），用 sys.stdin.read() 会被 GBK 误解码产生 surrogateescape，
+    # 后续 json.loads 直接抛 UnicodeDecodeError -> hook_input 兜底成 {} ->
+    # transcript_path 为空 -> 不播报。
+    try:
+        raw_stdin_bytes = sys.stdin.buffer.read()
+    except Exception:
+        raw_stdin_bytes = b""
+    raw_stdin = raw_stdin_bytes.decode("utf-8", errors="replace")
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--source",
@@ -338,7 +361,7 @@ def main() -> None:
     source = args.source or _default_source()
 
     try:
-        hook_input = json.load(sys.stdin)
+        hook_input = json.loads(raw_stdin) if raw_stdin.strip() else {}
     except Exception:
         hook_input = {}
 
