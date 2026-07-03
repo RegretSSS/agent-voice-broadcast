@@ -1,0 +1,11 @@
+# 跨平台核心依赖（Win / macOS / Linux 通用）
+edge-tts>=6.1.9
+pygame>=2.5.0
+aiohttp>=3.9.0
+pystray>=0.19.5
+pillow>=10.0.0
+
+# macOS 托盘后端（pystray 在 macOS 上需 AppKit / Quartz）
+pyobjc-core>=10.0; sys_platform == "darwin"
+pyobjc-framework-Cocoa>=10.0; sys_platform == "darwin"
+pyobjc-framework-Quartz>=10.0; sys_platform == "darwin"
