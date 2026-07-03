@@ -67,6 +67,20 @@ while True:
     try:
         pygame.mixer.music.load(mp3)
         pygame.mixer.music.play()
+        # 关键：play() 是非阻塞的，音频设备从 idle 醒来需要 ~100-300ms。
+        # 直接轮询 get_busy() 会在设备还没真正进入 busy 状态时读到 False，
+        # daemon 误以为播完了立刻推进下一句，结果整段静默——只有第一句
+        # 偶尔赶上设备唤醒的窗口才被听到。先等 busy=True 再进入正常等待循环。
+        busy_deadline = time.time() + 2.0
+        while not pygame.mixer.music.get_busy():
+            if _stop_flag.is_set() or _quit_flag.is_set():
+                pygame.mixer.music.stop()
+                break
+            if time.time() > busy_deadline:
+                # 2s 还没起来，load/play 大概率失败（设备被占、文件坏等），
+                # 不要卡死整条流水线
+                break
+            time.sleep(0.01)
         while pygame.mixer.music.get_busy():
             if _stop_flag.is_set() or _quit_flag.is_set():
                 pygame.mixer.music.stop()
