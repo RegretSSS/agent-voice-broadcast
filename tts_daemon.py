@@ -294,7 +294,11 @@ async def _play_sentences(sentences: list[str]) -> None:
     if not skip_requested and os.path.exists(DING_PATH):
         await asyncio.sleep(2.0)
         if not skip_requested:
-            await _play_in_subprocess(DING_PATH)
+            t_ding = time.time()
+            ding_ok = await _play_in_subprocess(DING_PATH)
+            log.info("ding played ok=%s %.2fs", ding_ok, time.time() - t_ding)
+    elif not os.path.exists(DING_PATH):
+        log.warning("ding.mp3 missing at %s — _ensure_ding should regenerate on next daemon start", DING_PATH)
 
     current = await _synthesize(sentences[0])
     next_task = asyncio.create_task(_synthesize(sentences[1])) if n > 1 else None
