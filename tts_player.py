@@ -58,12 +58,9 @@ while True:
         break
     _stop_flag.clear()  # 清掉上次残留的 STOP，避免误杀下一句
     if not _MIXER_AVAILABLE:
-        # 无音频设备：吃掉路径直接回 OK，让 daemon 继续推进
-        if os.path.exists(mp3):
-            try:
-                os.unlink(mp3)
-            except OSError:
-                pass
+        # 无音频设备：立刻回 OK，让 daemon 继续推进。
+        # 注意：不要在这里删 mp3 —— player 不知道哪条路径是临时句、哪条是
+        # 持久缓存（如 ding.mp3）。临时句 mp3 的删除由 daemon 在收到 OK 后做。
         sys.stdout.write("OK\n")
         sys.stdout.flush()
         continue
